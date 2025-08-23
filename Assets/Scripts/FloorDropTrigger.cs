@@ -8,6 +8,7 @@ public class FloorDropTrigger : MonoBehaviour
 
     void OnTriggerEnter2D(Collider2D other)
     {
+        Debug.Log("FloorDropTrigger activated");    
         if (other.attachedRigidbody && other.attachedRigidbody.CompareTag("Ball"))
         {
             gm.OnBallDropped();

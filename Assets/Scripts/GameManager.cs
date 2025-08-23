@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System;
+using System.Collections;
 
 public enum SfxType { Bounce, Powerup, LoseLife, Click }
 public enum PowerupType { DoubleScore, SlowTime, Shield }
@@ -19,6 +20,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] Sprite footballSprite;
     [SerializeField] Sprite basketballSprite;
     [SerializeField] Sprite tennisSprite;
+    [SerializeField] GameObject dropEffectPrefab;
 
     [Header("Difficulty")]
     [SerializeField] float gravityBase = 1.5f;
@@ -43,14 +45,18 @@ public class GameManager : MonoBehaviour
     void Start()
     {
         Lives = startingLives;
+        Score = 0;
         UpdateHUD();
+
         ballSprite.sprite = footballSprite; // start with football
         musicSource.clip = musicStage1;
         musicSource.loop = true;
         musicSource.Play();
+
         UpdateGravity();
     }
 
+    // Called by BallController when a successful tap happens
     public void OnSuccessfulJuggle()
     {
         Score += doubleScore ? 2 : 1;
@@ -59,24 +65,31 @@ public class GameManager : MonoBehaviour
         HandleMilestones();
     }
 
+    // Called by FloorDropTrigger when ball falls out
     public void OnBallDropped()
     {
         if (shield)
         {
             shield = false;
-            PlaySfx(SfxType.LoseLife); // light feedback but no life loss
+            PlaySfx(SfxType.LoseLife);
             return;
         }
 
-        if (CheatManager.Instance.CheatActive)
+        if (CheatManager.Instance != null && CheatManager.Instance.CheatActive)
         {
-            // No life loss during cheat mode (hidden continue)
-            return;
+            return; // cheat mode = no penalty
         }
 
         Lives--;
         PlaySfx(SfxType.LoseLife);
         UpdateHUD();
+
+        // Camera shake
+       // CameraShake.Instance?.DoShake();
+
+        // Drop effect
+        if (dropEffectPrefab != null)
+            Instantiate(dropEffectPrefab, ballRb.position, Quaternion.identity);
 
         if (Lives <= 0)
         {
@@ -85,10 +98,24 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            // Soft reset: nudge ball up
-            ballRb.linearVelocity = Vector2.zero;
-            ballRb.AddForce(Vector2.up * 6.0f, ForceMode2D.Impulse);
+            // Hide ball temporarily, then respawn
+            ballRb.gameObject.SetActive(false);
+            StartCoroutine(CoRespawnBall());
         }
+    }
+
+    IEnumerator CoRespawnBall()
+    {
+        yield return new WaitForSeconds(1f);
+
+        // Reset ball at random X above screen
+        float x = UnityEngine.Random.Range(-3f, 3f);
+        ballRb.transform.position = new Vector2(x, 4.5f);
+
+        ballRb.linearVelocity = Vector2.zero;
+        ballRb.AddForce(Vector2.up * 6f, ForceMode2D.Impulse);
+
+        ballRb.gameObject.SetActive(true);
     }
 
     void UpdateHUD()
@@ -107,12 +134,12 @@ public class GameManager : MonoBehaviour
     {
         if (Score == 20)
         {
-            ballSprite.sprite = basketballSprite; // stage 2
+            ballSprite.sprite = basketballSprite;
             SwapMusic(musicStage2);
         }
         else if (Score == 40)
         {
-            ballSprite.sprite = tennisSprite; // stage 3
+            ballSprite.sprite = tennisSprite;
             SwapMusic(musicStage3);
         }
     }
@@ -143,14 +170,14 @@ public class GameManager : MonoBehaviour
         PlaySfx(SfxType.Powerup);
     }
 
-    System.Collections.IEnumerator CoTimedFlag(float duration, Action<bool> setFlag)
+    IEnumerator CoTimedFlag(float duration, Action<bool> setFlag)
     {
         setFlag(true);
         yield return new WaitForSeconds(duration);
         setFlag(false);
     }
 
-    System.Collections.IEnumerator CoSlowTime(float duration)
+    IEnumerator CoSlowTime(float duration)
     {
         Time.timeScale = 0.6f;
         yield return new WaitForSecondsRealtime(duration);
@@ -166,6 +193,6 @@ public class GameManager : MonoBehaviour
             SfxType.LoseLife => sfxLoseLife,
             _ => sfxClick
         };
-        if (clip != null) { sfxSource.PlayOneShot(clip); }
+        if (clip != null) sfxSource.PlayOneShot(clip);
     }
 }
