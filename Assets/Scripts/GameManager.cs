@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using System;
 using System.Collections;
 
@@ -12,14 +13,24 @@ public class GameManager : MonoBehaviour
     [SerializeField] Text scoreText;
     [SerializeField] Text livesText;
     [SerializeField] GameObject gameOverPanel;
+    [SerializeField] Button adReviveButton;
+    [SerializeField] Button iapButton;
+    [SerializeField] Button restartButton;
+    [SerializeField] Button menuButton;
 
     [Header("Gameplay")]
-    [SerializeField] int startingLives = 3;
+    [SerializeField] int startingLives = 30
+    ;
     [SerializeField] Rigidbody2D ballRb;
     [SerializeField] SpriteRenderer ballSprite;
+
+    [SerializeField] SpriteRenderer CourtSprite;
     [SerializeField] Sprite footballSprite;
     [SerializeField] Sprite basketballSprite;
     [SerializeField] Sprite tennisSprite;
+     [SerializeField] Sprite footballCourtSprite;
+    [SerializeField] Sprite basketballCourtSprite;
+    [SerializeField] Sprite tennisCourtSprite;
     [SerializeField] GameObject dropEffectPrefab;
 
     [Header("Difficulty")]
@@ -49,14 +60,26 @@ public class GameManager : MonoBehaviour
         UpdateHUD();
 
         ballSprite.sprite = footballSprite; // start with football
-        musicSource.clip = musicStage1;
-        musicSource.loop = true;
-        musicSource.Play();
+        CourtSprite.sprite = footballCourtSprite;
+        if (musicStage1 != null)
+        {
+            musicSource.clip = musicStage1;
+            musicSource.loop = true;
+            musicSource.Play();
+        }
 
         UpdateGravity();
+
+        // Setup GameOver menu buttons
+        if (adReviveButton) adReviveButton.onClick.AddListener(ReviveWithAd);
+        if (iapButton) iapButton.onClick.AddListener(BuyIAP);
+        if (restartButton) restartButton.onClick.AddListener(RestartGame);
+        if (menuButton) menuButton.onClick.AddListener(GoToMenu);
+
+        gameOverPanel.SetActive(false);
     }
 
-    // Called by BallController when a successful tap happens
+    // Called by BallController when player bounces correctly
     public void OnSuccessfulJuggle()
     {
         Score += doubleScore ? 2 : 1;
@@ -65,7 +88,7 @@ public class GameManager : MonoBehaviour
         HandleMilestones();
     }
 
-    // Called by FloorDropTrigger when ball falls out
+    // Called when ball hits the floor
     public void OnBallDropped()
     {
         if (shield)
@@ -77,19 +100,15 @@ public class GameManager : MonoBehaviour
 
         if (CheatManager.Instance != null && CheatManager.Instance.CheatActive)
         {
-            return; // cheat mode = no penalty
+            return;
         }
 
         Lives--;
         PlaySfx(SfxType.LoseLife);
         UpdateHUD();
 
-        // Camera shake
-       // CameraShake.Instance?.DoShake();
-
-        // Drop effect
-        if (dropEffectPrefab != null)
-            Instantiate(dropEffectPrefab, ballRb.position, Quaternion.identity);
+        //  CameraShake.Instance?.DoShake();
+        SpawnDropEffect(ballRb.position);
 
         if (Lives <= 0)
         {
@@ -98,7 +117,6 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            // Hide ball temporarily, then respawn
             ballRb.gameObject.SetActive(false);
             StartCoroutine(CoRespawnBall());
         }
@@ -107,8 +125,6 @@ public class GameManager : MonoBehaviour
     IEnumerator CoRespawnBall()
     {
         yield return new WaitForSeconds(1f);
-
-        // Reset ball at random X above screen
         float x = UnityEngine.Random.Range(-3f, 3f);
         ballRb.transform.position = new Vector2(x, 4.5f);
 
@@ -116,6 +132,12 @@ public class GameManager : MonoBehaviour
         ballRb.AddForce(Vector2.up * 6f, ForceMode2D.Impulse);
 
         ballRb.gameObject.SetActive(true);
+    }
+
+    void SpawnDropEffect(Vector2 pos)
+    {
+        if (dropEffectPrefab != null)
+            Instantiate(dropEffectPrefab, pos, Quaternion.identity);
     }
 
     void UpdateHUD()
@@ -135,11 +157,13 @@ public class GameManager : MonoBehaviour
         if (Score == 20)
         {
             ballSprite.sprite = basketballSprite;
+            CourtSprite.sprite = basketballCourtSprite;
             SwapMusic(musicStage2);
         }
         else if (Score == 40)
         {
             ballSprite.sprite = tennisSprite;
+            CourtSprite.sprite = tennisCourtSprite; 
             SwapMusic(musicStage3);
         }
     }
@@ -193,6 +217,41 @@ public class GameManager : MonoBehaviour
             SfxType.LoseLife => sfxLoseLife,
             _ => sfxClick
         };
-        if (clip != null) sfxSource.PlayOneShot(clip);
+        if (clip != null) { sfxSource.PlayOneShot(clip); }
+    }
+
+    // ========== GAME OVER MENU BUTTONS ==========
+
+    void ReviveWithAd()
+    {
+        Debug.Log("TODO: Show rewarded ad here...");
+
+        // If ad watched successfully:
+        Time.timeScale = 1f;
+        Lives = 1;
+        UpdateHUD();
+        gameOverPanel.SetActive(false);
+
+        // Respawn ball
+        ballRb.gameObject.SetActive(false);
+        StartCoroutine(CoRespawnBall());
+    }
+
+    void BuyIAP()
+    {
+        Debug.Log("TODO: Trigger Unity IAP purchase here...");
+        // Example: Remove ads, give special ball, etc.
+    }
+
+    void RestartGame()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    void GoToMenu()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene("MainMenu"); // Make sure you have a MainMenu scene
     }
 }
