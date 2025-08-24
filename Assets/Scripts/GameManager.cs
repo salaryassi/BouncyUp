@@ -24,7 +24,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] Rigidbody2D ballRb;
     [SerializeField] SpriteRenderer ballSprite;
 
-    [SerializeField] SpriteRenderer CourtSprite;
+    [SerializeField] Image CourtSprite;
     [SerializeField] Sprite footballSprite;
     [SerializeField] Sprite basketballSprite;
     [SerializeField] Sprite tennisSprite;
