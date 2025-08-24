@@ -17,21 +17,25 @@ public class GameManager : MonoBehaviour
     [SerializeField] Button iapButton;
     [SerializeField] Button restartButton;
     [SerializeField] Button menuButton;
+    [SerializeField] Text highScoreText; // NEW: Text to show the high score on the game over panel.
+    [SerializeField] GameObject newHighScoreCelebration; // NEW: An object (like text or an image) to show when a new record is set.
 
     [Header("Gameplay")]
-    [SerializeField] int startingLives = 30
-    ;
+    [SerializeField] int startingLives = 3;
     [SerializeField] Rigidbody2D ballRb;
     [SerializeField] SpriteRenderer ballSprite;
-
     [SerializeField] Image CourtSprite;
     [SerializeField] Sprite footballSprite;
     [SerializeField] Sprite basketballSprite;
     [SerializeField] Sprite tennisSprite;
-     [SerializeField] Sprite footballCourtSprite;
+    [SerializeField] Sprite footballCourtSprite;
     [SerializeField] Sprite basketballCourtSprite;
     [SerializeField] Sprite tennisCourtSprite;
     [SerializeField] GameObject dropEffectPrefab;
+
+    [Header("Effects & Rewards")] // NEW: Section for new gameplay elements
+    [SerializeField] GameObject comboEffectPrefab; // NEW: Particle effect for a successful combo.
+    [SerializeField] int comboThreshold = 5; // NEW: How many juggles are needed for a combo reward.
 
     [Header("Difficulty")]
     [SerializeField] float gravityBase = 1.5f;
@@ -47,19 +51,30 @@ public class GameManager : MonoBehaviour
     [SerializeField] AudioClip musicStage1;
     [SerializeField] AudioClip musicStage2;
     [SerializeField] AudioClip musicStage3;
+    [SerializeField] AudioClip premiumMusic;
+    [SerializeField] AdiveryAdsManager AdiveryAdsManager;
 
     public int Score { get; private set; }
     public int Lives { get; private set; }
     bool doubleScore;
     bool shield;
 
+    // NEW: Variables for combo and high score tracking
+    private int comboCount;
+    private int highScore;
+
     void Start()
     {
         Lives = startingLives;
         Score = 0;
+        comboCount = 0; // NEW: Initialize combo count.
+
+        // NEW: Load the high score from device storage. Defaults to 0 if not found.
+        highScore = PlayerPrefs.GetInt("HighScore", 0);
+
         UpdateHUD();
 
-        ballSprite.sprite = footballSprite; // start with football
+        ballSprite.sprite = footballSprite;
         CourtSprite.sprite = footballCourtSprite;
         if (musicStage1 != null)
         {
@@ -70,19 +85,34 @@ public class GameManager : MonoBehaviour
 
         UpdateGravity();
 
-        // Setup GameOver menu buttons
         if (adReviveButton) adReviveButton.onClick.AddListener(ReviveWithAd);
         if (iapButton) iapButton.onClick.AddListener(BuyIAP);
         if (restartButton) restartButton.onClick.AddListener(RestartGame);
         if (menuButton) menuButton.onClick.AddListener(GoToMenu);
 
         gameOverPanel.SetActive(false);
+        if (newHighScoreCelebration != null) newHighScoreCelebration.SetActive(false); // NEW: Hide the celebration message at start.
     }
 
     // Called by BallController when player bounces correctly
     public void OnSuccessfulJuggle()
     {
         Score += doubleScore ? 2 : 1;
+        comboCount++; // NEW: Increase combo counter.
+
+        // NEW: Check if the player has reached the combo threshold.
+        if (comboCount >= comboThreshold)
+        {
+            comboCount = 0; // Reset for the next combo.
+            Lives++; // Award an extra life!
+            
+            // Play the particle effect at the ball's position.
+            if (comboEffectPrefab != null)
+            {
+                Instantiate(comboEffectPrefab, ballRb.transform.position, Quaternion.identity);
+            }
+        }
+
         UpdateHUD();
         UpdateGravity();
         HandleMilestones();
@@ -91,6 +121,8 @@ public class GameManager : MonoBehaviour
     // Called when ball hits the floor
     public void OnBallDropped()
     {
+        comboCount = 0; // NEW: Reset the combo count when the ball is dropped.
+
         if (shield)
         {
             shield = false;
@@ -107,12 +139,12 @@ public class GameManager : MonoBehaviour
         PlaySfx(SfxType.LoseLife);
         UpdateHUD();
 
-        //  CameraShake.Instance?.DoShake();
         SpawnDropEffect(ballRb.position);
 
         if (Lives <= 0)
         {
             Time.timeScale = 0f;
+            CheckForHighScore(); // NEW: Check and update the high score before showing the panel.
             gameOverPanel.SetActive(true);
         }
         else
@@ -122,15 +154,36 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // NEW: This method checks the score and updates the high score if needed.
+    void CheckForHighScore()
+    {
+        if (Score > highScore)
+        {
+            highScore = Score;
+            PlayerPrefs.SetInt("HighScore", highScore); // Save the new high score.
+            PlayerPrefs.Save(); // Ensure it's written to disk.
+            
+            // Update the UI text to show it's a new record.
+            highScoreText.text = $"New Record: {highScore}!";
+            
+            // Show the celebration object!
+            if (newHighScoreCelebration != null) newHighScoreCelebration.SetActive(true);
+        }
+        else
+        {
+            // Just display the existing record.
+            highScoreText.text = $"Record: {highScore}";
+        }
+    }
+
+
     IEnumerator CoRespawnBall()
     {
         yield return new WaitForSeconds(1f);
         float x = UnityEngine.Random.Range(-3f, 3f);
         ballRb.transform.position = new Vector2(x, 4.5f);
-
         ballRb.linearVelocity = Vector2.zero;
         ballRb.AddForce(Vector2.up * 6f, ForceMode2D.Impulse);
-
         ballRb.gameObject.SetActive(true);
     }
 
@@ -158,25 +211,14 @@ public class GameManager : MonoBehaviour
         {
             ballSprite.sprite = basketballSprite;
             CourtSprite.sprite = basketballCourtSprite;
-            SwapMusic(musicStage2);
         }
         else if (Score == 40)
         {
             ballSprite.sprite = tennisSprite;
-            CourtSprite.sprite = tennisCourtSprite; 
-            SwapMusic(musicStage3);
+            CourtSprite.sprite = tennisCourtSprite;
         }
     }
 
-    void SwapMusic(AudioClip clip)
-    {
-        if (clip == null) return;
-        musicSource.Stop();
-        musicSource.clip = clip;
-        musicSource.Play();
-    }
-
-    // Powerups
     public void ApplyPowerup(PowerupType type, float duration)
     {
         switch (type)
@@ -224,23 +266,21 @@ public class GameManager : MonoBehaviour
 
     void ReviveWithAd()
     {
-        Debug.Log("TODO: Show rewarded ad here...");
-
-        // If ad watched successfully:
-        Time.timeScale = 1f;
-        Lives = 1;
-        UpdateHUD();
-        gameOverPanel.SetActive(false);
-
-        // Respawn ball
-        ballRb.gameObject.SetActive(false);
-        StartCoroutine(CoRespawnBall());
+        AdiveryAdsManager.Instance.ShowRewarded(() =>
+        {
+            Time.timeScale = 1f;
+            Lives = 1;
+            UpdateHUD();
+            gameOverPanel.SetActive(false);
+            ballRb.gameObject.SetActive(false);
+            StartCoroutine(CoRespawnBall());
+        });
     }
 
     void BuyIAP()
     {
         Debug.Log("TODO: Trigger Unity IAP purchase here...");
-        // Example: Remove ads, give special ball, etc.
+        SwapMusic(premiumMusic);
     }
 
     void RestartGame()
@@ -252,6 +292,16 @@ public class GameManager : MonoBehaviour
     void GoToMenu()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene("MainMenu"); // Make sure you have a MainMenu scene
+        SceneManager.LoadScene("MainMenu");
+    }
+    
+    public void SwapMusic(AudioClip clip)
+    {
+        if (clip == null) return;
+        musicSource.Stop();
+        musicSource.clip = clip;
+        musicSource.loop = true;
+        musicSource.Play();
+        Debug.Log("🎵 Music swapped to premium track!");
     }
 }
